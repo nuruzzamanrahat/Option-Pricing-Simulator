@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Option Pricing Simulator </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <style>
+        .shadow-custom {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .loading-bar {
+            height: 8px;
+            background-color: #6366f1;
+            transition: width 0.3s;
+            border-radius: 4px;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary-indigo': '#4f46e5',
+                        'secondary-gray': '#6b7280',
+                        'success-green': '#10b981',
+                        'strike-line': '#ef4444',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 sm:p-8 font-sans">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-primary-indigo mb-2">Option Pricing Simulator</h1>
+            <p class="text-lg text-secondary-gray">Pricing European Options using Geometric Brownian Motion</p>
+        </header>
+
+        <!-- Input Panel -->
+        <div class="bg-white rounded-xl p-6 shadow-custom mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Model Parameters</h2>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                
+                <div class="flex flex-col"><label class="text-sm font-medium text-gray-700">Stock Price (S₀) :</label><input type="number" id="S0" value="100" min="1" step="0.01" class="p-3 border border-gray-300 rounded-lg"></div>
+                <div class="flex flex-col"><label class="text-sm font-medium text-gray-700">Strike (K) :</label><input type="number" id="K" value="100" min="1" step="0.01" class="p-3 border border-gray-300 rounded-lg"></div>
+                <div class="flex flex-col"><label class="text-sm font-medium text-gray-700">Time T (in Years) :</label><input type="number" id="T" value="1.0" min="0.01" step="0.01" class="p-3 border border-gray-300 rounded-lg"></div>
+                <div class="flex flex-col"><label class="text-sm font-medium text-gray-700">Volatility (σ) :</label><input type="number" id="sigma" value="0.20" min="0.01" step="0.01" class="p-3 border border-gray-300 rounded-lg"></div>
+                <div class="flex flex-col"><label class="text-sm font-medium text-gray-700">Rate (r) :</label><input type="number" id="r" value="0.05" min="0" step="0.001" class="p-3 border border-gray-300 rounded-lg"></div>
+
+            </div>
+            
+            <div class="mt-6">
+                <label class="text-sm font-medium text-gray-700">Number of Simulations ((Sₜ)M):</label>
+                <input type="number" id="M" value="50000" min="1000" max="1000000" step="10000" class="p-3 border border-gray-300 rounded-lg w-full mt-1">
+            </div>
+
+            <div class="mt-6 flex justify-center space-x-4">
+                <button onclick="startSimulation('Call')" id="callButton" class="px-8 py-3 bg-success-green text-white font-bold rounded-lg hover:bg-green-700 transition duration-300 shadow-md disabled:opacity-50">
+                    Simulate Call Price
+                </button>
+                <button onclick="startSimulation('Put')" id="putButton" class="px-8 py-3 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition duration-300 shadow-md disabled:opacity-50">
+                    Simulate Put Price
+                </button>
+            </div>
+            
+            <div class="mt-6" id="progressBarContainer" style="display:none;">
+                <p class="text-sm text-gray-600 mb-1">Running Simulation...</p>
+                <div class="w-full bg-gray-200 rounded-full">
+                    <div id="progressBar" class="loading-bar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Visualization and Output Panel -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Output Metrics -->
+            <div class="lg:col-span-1 bg-white rounded-xl p-6 shadow-custom h-fit">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Simulation Results</h2>
+                <div class="space-y-4 text-center">
+                    
+                    <div class="p-3 bg-indigo-50 rounded-lg">
+                        <p class="text-sm text-gray-600">Monte Carlo Price</p>
+                        <p id="simulatedPrice" class="text-3xl font-extrabold text-primary-indigo mt-1">--</p>
+                    </div>
+                    
+                    <div class="p-3 bg-purple-50 rounded-lg">
+                        <p class="text-sm text-gray-600">Black-Scholes Price</p>
+                        <p id="bsPrice" class="text-3xl font-extrabold text-purple-700 mt-1">--</p>
+                    </div>
+                    
+                    <div class="p-3 bg-yellow-50 rounded-lg">
+                        <p class="text-sm text-gray-600">Standard Error (SE)</p>
+                        <p id="standardError" class="text-2xl font-extrabold text-yellow-700 mt-1">--</p>
+                    </div>
+
+                    <div class="p-3 bg-gray-50 rounded-lg">
+                        <p class="text-sm text-gray-600">95% Confidence Interval</p>
+                        <p id="confidenceInterval" class="text-lg font-bold text-gray-700 mt-2">--</p>
+                    </div>
+                    
+                    <div class="p-3 bg-green-50 rounded-lg">
+                        <p class="text-sm text-gray-600">Pricing Error</p>
+                        <p id="pricingError" class="text-xl font-bold text-green-700 mt-1">--</p>
+                    </div>
+                    
+                </div>
+            </div>
+
+            <!-- Chart Panel -->
+            <div class="lg:col-span-2 bg-white rounded-xl p-6 shadow-custom">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Terminal Stock Price Distribution (Sₜ)</h2>
+                <div class="relative h-[400px]">
+                    <canvas id="priceDistributionChart"></canvas>
+                </div>
+                <p id="chartStatus" class="mt-4 text-center text-secondary-gray text-sm">Run a simulation to see the distribution curve.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global Chart Instance
+        let priceChart = null;
+        const NUM_BINS = 50;
+
+        // --- IMPROVED: Efficient Box-Muller Transform (generates TWO random normals) ---
+        let spareRandom = null;
+        let hasSpare = false;
+
+        function boxMullerTransform() {
+            if (hasSpare) {
+                hasSpare = false;
+                return spareRandom;
+            }
+
+            let u = 0, v = 0;
+            while (u === 0) u = Math.random(); 
+            while (v === 0) v = Math.random();
+            
+            const mag = Math.sqrt(-2.0 * Math.log(u));
+            const z0 = mag * Math.cos(2.0 * Math.PI * v);
+            const z1 = mag * Math.sin(2.0 * Math.PI * v);
+            
+            spareRandom = z1;
+            hasSpare = true;
+            return z0;
+        }
+
+        // --- NEW: Black-Scholes Formula for Comparison ---
+        function blackScholes(optionType, S0, K, T, sigma, r) {
+            const d1 = (Math.log(S0 / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+            const d2 = d1 - sigma * Math.sqrt(T);
+            
+            // Cumulative distribution function for standard normal
+            function normalCDF(x) {
+                return 0.5 * (1 + erf(x / Math.sqrt(2)));
+            }
+            
+            // Error function approximation
+            function erf(x) {
+                const sign = (x >= 0) ? 1 : -1;
+                x = Math.abs(x);
+                
+                const a1 =  0.254829592;
+                const a2 = -0.284496736;
+                const a3 =  1.421413741;
+                const a4 = -1.453152027;
+                const a5 =  1.061405429;
+                const p  =  0.3275911;
+                
+                const t = 1.0 / (1.0 + p * x);
+                const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+                
+                return sign * y;
+            }
+            
+            if (optionType === 'Call') {
+                return S0 * normalCDF(d1) - K * Math.exp(-r * T) * normalCDF(d2);
+            } else { // Put
+                return K * Math.exp(-r * T) * normalCDF(-d2) - S0 * normalCDF(-d1);
+            }
+        }
+
+        // --- Main Monte Carlo Simulation Function ---
+        function runMonteCarlo(optionType, S0, K, T, sigma, r, M) {
+            
+            let discountedPayoffs = [];
+            let terminalStockPrices = [];
+            let sumPayoff = 0;
+            let sumSquaredPayoff = 0;
+            
+            const mu = r;
+            const drift = (mu - (sigma * sigma / 2)) * T;
+            const volatilityTerm = sigma * Math.sqrt(T);
+
+            for (let i = 0; i < M; i++) {
+                const Z = boxMullerTransform();
+                
+                // Simulate Terminal Stock Price (S_T)
+                const ST = S0 * Math.exp(drift + volatilityTerm * Z);
+                terminalStockPrices.push(ST);
+
+                // Calculate Option Payoff at Maturity (T)
+                let payoff;
+                if (optionType === 'Call') {
+                    payoff = Math.max(0, ST - K);
+                } else { // Put
+                    payoff = Math.max(0, K - ST);
+                }
+                
+                // Discount the Payoff to Today (Time 0)
+                const discountedPayoff = payoff * Math.exp(-r * T);
+                discountedPayoffs.push(discountedPayoff);
+
+                sumPayoff += discountedPayoff;
+                sumSquaredPayoff += discountedPayoff * discountedPayoff;
+
+                // Update progress bar
+                if (i % 2000 === 0) {
+                    const progress = ((i / M) * 100).toFixed(0);
+                    document.getElementById('progressBar').style.width = `${progress}%`;
+                }
+            }
+            
+            // Calculate the Estimated Option Price
+            const V0_hat = sumPayoff / M;
+            
+            // Calculate Standard Error
+            const E_V_squared = sumSquaredPayoff / M;
+            const Var_V = E_V_squared - (V0_hat * V0_hat);
+            const StdDev_V = Math.sqrt(Var_V);
+            const SE = StdDev_V / Math.sqrt(M);
+            
+            document.getElementById('progressBar').style.width = `100%`;
+
+            return { price: V0_hat, standardError: SE, terminalStockPrices };
+        }
+        
+        // --- IMPROVED: Histogram with proper ITM/OTM coloring based on option type ---
+        function getHistogramData(data, numBins) {
+            if (data.length === 0) return { labels: [], counts: [], min: 0, max: 0 };
+
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const range = max - min;
+            const binSize = range / numBins;
+
+            let counts = new Array(numBins).fill(0);
+            let labels = [];
+
+            for (let i = 0; i < numBins; i++) {
+                labels.push((min + i * binSize).toFixed(2));
+            }
+
+            data.forEach(value => {
+                let binIndex = Math.floor((value - min) / binSize);
+                if (binIndex === numBins) binIndex = numBins - 1;
+                if (binIndex >= 0 && binIndex < numBins) {
+                    counts[binIndex]++;
+                }
+            });
+
+            return { labels, counts, binSize, min, max };
+        }
+
+        // --- IMPROVED: Chart with proper annotations and option-type-aware coloring ---
+        function plotHistogram(stockPrices, K, S0, priceEstimate, optionType) {
+            const chartCanvas = document.getElementById('priceDistributionChart');
+            const { labels, counts, binSize, min, max } = getHistogramData(stockPrices, NUM_BINS);
+            
+            if (priceChart) {
+                priceChart.destroy();
+            }
+
+            // IMPROVED: Option-type-aware coloring
+            const backgroundColors = counts.map((count, index) => {
+                const boundary = min + index * binSize;
+                let isITM;
+                
+                if (optionType === 'Call') {
+                    // Call: ITM when S_T > K (green), OTM when S_T < K (red)
+                    isITM = boundary > K;
+                } else {
+                    // Put: ITM when S_T < K (green), OTM when S_T > K (red)
+                    isITM = boundary < K;
+                }
+                
+                return isITM ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.5)';
+            });
+
+            const data = {
+                labels: labels.map((l, i) => `${l}-${(parseFloat(l) + binSize).toFixed(2)}`),
+                datasets: [{
+                    label: 'Count of Terminal Prices (Sₜ)',
+                    data: counts,
+                    backgroundColor: backgroundColors,
+                    borderColor: 'rgba(79, 70, 229, 1)',
+                    borderWidth: 1,
+                    barPercentage: 1.0,
+                    categoryPercentage: 1.0,
+                }]
+            };
+
+            // Find strike position in chart
+            const strikePosition = ((K - min) / (max - min)) * 100;
+
+            const options = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Terminal Stock Price (Sₜ)',
+                            font: { size: 14, weight: 'bold' }
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Frequency (Path Count)',
+                            font: { size: 14, weight: 'bold' }
+                        },
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    legend: { display: true },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => {
+                                return `Price Range: ${context[0].label}`;
+                            },
+                            label: (context) => {
+                                return `Paths: ${context.parsed.y.toLocaleString()}`;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            strikeLine: {
+                                type: 'line',
+                                xMin: strikePosition,
+                                xMax: strikePosition,
+                                borderColor: 'rgb(255, 0, 0)',
+                                borderWidth: 3,
+                                borderDash: [6, 6],
+                                label: {
+                                    display: true,
+                                    content: `Strike K = $${K}`,
+                                    position: 'start',
+                                    backgroundColor: 'rgba(255, 0, 0, 0.8)',
+                                    color: 'white',
+                                    font: {
+                                        weight: 'bold'
+                                    }
+                                }
+                            },
+                            spotLine: {
+                                type: 'line',
+                                xMin: ((S0 - min) / (max - min)) * 100,
+                                xMax: ((S0 - min) / (max - min)) * 100,
+                                borderColor: 'rgb(0, 0, 255)',
+                                borderWidth: 2,
+                                borderDash: [3, 3],
+                                label: {
+                                    display: true,
+                                    content: `S₀ = $${S0}`,
+                                    position: 'end',
+                                    backgroundColor: 'rgba(0, 0, 255, 0.8)',
+                                    color: 'white',
+                                    font: {
+                                        weight: 'bold'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            priceChart = new Chart(chartCanvas, {
+                type: 'bar',
+                data: data,
+                options: options
+            });
+            
+            document.getElementById('chartStatus').textContent = 
+                `${optionType} Option: ${stockPrices.length.toLocaleString()} simulated paths. ` +
+                `Green = In-the-Money, Red = Out-of-the-Money`;
+        }
+
+        // --- Asynchronous Wrapper for UI Feedback ---
+        async function startSimulation(optionType) {
+            
+            // Disable buttons and show loading bar
+            document.getElementById('callButton').disabled = true;
+            document.getElementById('putButton').disabled = true;
+            document.getElementById('progressBarContainer').style.display = 'block';
+            document.getElementById('progressBar').style.width = `0%`;
+            document.getElementById('chartStatus').textContent = 'Running simulation...';
+            
+            // Get Inputs
+            const S0 = parseFloat(document.getElementById('S0').value);
+            const K = parseFloat(document.getElementById('K').value);
+            const T = parseFloat(document.getElementById('T').value);
+            const sigma = parseFloat(document.getElementById('sigma').value);
+            const r = parseFloat(document.getElementById('r').value);
+            const M = parseInt(document.getElementById('M').value);
+
+            // Validation
+            if ([S0, K, T, sigma, r, M].some(isNaN) || S0 <= 0 || K <= 0 || T <= 0 || sigma <= 0 || M < 1000) {
+                alert("Invalid inputs! Please check all parameters.");
+                document.getElementById('callButton').disabled = false;
+                document.getElementById('putButton').disabled = false;
+                document.getElementById('progressBarContainer').style.display = 'none';
+                return;
+            }
+            
+            // Allow UI to update
+            await new Promise(resolve => setTimeout(resolve, 10)); 
+
+            // Run Monte Carlo
+            const { price, standardError, terminalStockPrices } = runMonteCarlo(optionType, S0, K, T, sigma, r, M);
+            
+            // Calculate Black-Scholes price
+            const bsPrice = blackScholes(optionType, S0, K, T, sigma, r);
+            const pricingError = Math.abs(price - bsPrice);
+            const errorPercent = (pricingError / bsPrice * 100).toFixed(2);
+            
+            // Display Results
+            document.getElementById('simulatedPrice').textContent = `$${price.toFixed(4)}`;
+            document.getElementById('bsPrice').textContent = `$${bsPrice.toFixed(4)}`;
+            document.getElementById('standardError').textContent = standardError.toFixed(6);
+            document.getElementById('pricingError').textContent = `$${pricingError.toFixed(4)} (${errorPercent}%)`;
+
+            // 95% Confidence Interval
+            const CI_lower = price - 1.96 * standardError;
+            const CI_upper = price + 1.96 * standardError;
+            document.getElementById('confidenceInterval').textContent = 
+                `[$${CI_lower.toFixed(4)}, $${CI_upper.toFixed(4)}]`;
+
+            // Plot the histogram with option type
+            plotHistogram(terminalStockPrices, K, S0, price, optionType);
+
+            // Re-enable buttons and hide loading bar
+            document.getElementById('callButton').disabled = false;
+            document.getElementById('putButton').disabled = false;
+            document.getElementById('progressBarContainer').style.display = 'none';
+        }
+        
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('callButton').disabled = false;
+            document.getElementById('putButton').disabled = false;
+        });
+
+    </script>
+</body>
+</html>
